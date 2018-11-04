@@ -21,7 +21,13 @@ $f(\theta) = \frac{1}{\pi (1 + \theta ^2)}, -\infty < \theta < \infty$
 
 This is a special form of the Cauchy called the standard Cauchy Distribution with parameters $x_0 = 0, \gamma = 1$. 
 
-We will write a Metropolis Hastings Algorithm whose limiting distribution is our posterior distribution. 
+We will write a Metropolis Hastings Algorithm whose limiting distribution is our posterior distribution: 
+
+\begin{center}
+$f(x) = \frac{1}{\sqrt{2 \pi}} e^{-\frac{(x - \theta)^2}{2}} \frac{1}{\pi(1 + \theta^2)}$\\
+$X_i \sim \mathrm{Normal}(\theta, 1)$\\
+$\theta \sim \mathrm{Cauchy}(0, 1)$
+\end{center}
 
 First lets simulate some data
 
