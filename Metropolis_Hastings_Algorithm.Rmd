@@ -5,11 +5,19 @@ date: "November 3, 2018"
 output:
   pdf_document: default
   html_document: default
+  
+header-includes:
+  - \usepackage{leading}
+  - \leading{18pt}
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(gridExtra)
 ```
+
+# Metropolis Algorithm
 
 # Question
 
@@ -24,7 +32,7 @@ This is a special form of the Cauchy called the standard Cauchy Distribution wit
 We will write a Metropolis Hastings Algorithm whose limiting distribution is our posterior distribution: 
 
 \begin{center}
-$f(x) = \frac{1}{\sqrt{2 \pi}} e^{-\frac{(x - \theta)^2}{2}} \frac{1}{\pi(1 + \theta^2)}$\\
+$f(x, \theta, \sigma^2 = 1) = \frac{1}{\sqrt{2 \pi}} e^{-\frac{(x - \theta)^2}{2}} \frac{1}{\pi(1 + \theta^2)}$\\
 $X_i \sim \mathrm{Normal}(\theta, 1)$\\
 $\theta \sim \mathrm{Cauchy}(0, 1)$
 \end{center}
@@ -110,4 +118,102 @@ plot(d, main = expression(paste("Kernel Density Plot for ", theta)),
 polygon(d, col = 'dodgerblue1', border = 'dark blue')
 ```
 
+
+# Gibbs Sampler 
+
+# Problem 
+
+Suppose we have a **Zero-Inflated Poisson Model**. In this model, random data $X_1, ..., X_n$ are of the form $X_i = R_i Y_i$ where $Y_i \sim \mathrm{Poisson}(\lambda)$ and $R_i \sim \mathrm{Bernoulli}(p)$, and our samples are iid. 
+
+If given an outcome $x = (x_1, ..., x_n)$, our goal is to estimate $\lambda$ and $p$. 
+
+A zero-inflated Poisson model is used when we have a random event containing excess zero-count data in unit time. For example, the number of insurance claims within a population for a certain type of risk would be zero-inflated by those people who have not taken out insurance against the risk and thus are unable to claim. 
+
+Using a hierarchical Bayes model: 
+
+----------------------------------------------------------------
+
+$p \sim \mathrm{Uniform}(0, 1)$ | Prior for $p$
+
+
+$(\lambda | p) \sim \mathrm{Gamma}(a, b)$ | Prior for $\lambda$
+
+
+$(r_i | p, \lambda) \sim \mathrm{Bernoulli}(p)$ | Independently (from model above) 
+
+
+$(x_i | r, \lambda, p) \sim \mathrm{Poisson}(\lambda r_i)$ | Independently (from model above)
+
+Given $a, b$, $r = (r_1, ..., r_n)$, we have the posterior:
+
+
+$f(x, r, \lambda, p) = \frac{b^{\alpha} \lambda^{\alpha - 1} e^{-b \lambda}}{\Gamma(\alpha)} \Pi_{i = 1}^n \frac{e^{-\lambda r_i}(\lambda r_i)^{x_i}}{x!} p^{r_i}(1-p)^{1-r}$
+
+-----------------------------------------------------------------
+
+We want to use Gibbs sampling to sample from our posterior pdf $f(\lambda, p, r | x)$. First though, we must learn the full conditional distributions for $\lambda$, $p$, and $r_i$.
+
+Given $f(x, r, \lambda, p)$, the full conditional densities are all proportial to our joint density as functions of $\lambda, p, r_i$. For instance :
+
+
+$\pi(\lambda | p, r, x) \propto \lambda^{\alpha-1} e^{-b\lambda} \Pi_{i=1}^n e^{- \lambda r_i}(\lambda)^{x_i} \propto \lambda^{\alpha - 1} e^{-b \lambda} e^{\lambda \sum_{i} r_i} \lambda^{\sum_i x_i}$
+
+
+Where only terms depending on $\lambda$ are kept. Then
+
+
+$\pi(\lambda | p, r, x) \propto \lambda^{\alpha - 1 + \sum_i x_i} e^{-\lambda[b + \sum_i r_i]}$. Therefore
+
+
+$\lambda | p, r, x \sim \mathrm{Gamma}(a + \sum_i x_i, b + \sum_i r_i)$
+
+
+Similarly for $p$: 
+
+$\pi(p | \lambda, r, x) \propto \Pi_{i=1}^n p^{r_i}(1-p)^{1-r_i} = p^{\sum_i r_i}(1-p)^{n - \sum_i r_i}$, leading to: 
+
+$p | \lambda, r, x \sim \mathrm{Beta}(1 + \sum_i r_i, n + 1 - \sum_i r_i)$. 
+
+Similarly for $r_i$: 
+
+Note that only the $x_i$'s for which $r_i = 1$ need to be simulated. We can write the full conditional density for $r_i$ as such:
+
+$\pi(r_i|\lambda, x, p) \propto \Pi_{i=1}^n e^{-r_i\lambda}(\lambda r_i) p^{r_i}(1-p)^{1-r_i} \propto \frac{p e^{-\lambda}}{p e^{-\lambda} + (1-p)I\{x_i = 0\}}$. Then 
+
+$r_i | \lambda, p, x \sim \mathrm{Bernoulli}(\frac{p e^{-\lambda}}{p e^{-\lambda} + (1-p)I\{x_i = 0\}})$. 
+
+Now, given our 3 full conditionals, we can run our gibbs sampler: 
+
+```{r}
+# simulate x_i
+n = 10^5 
+p = 0.3
+lam = 2
+r = as.integer(runif(n) < p)
+x = rep(0, n)
+x[r == 1] = rpois(sum(r == 1), lam)
+
+# Gibbs Sampler
+a <- 2
+b <- 2 
+T <- 10^4
+lamb <- pe <- rep(0.5, T)
+
+for (t in 2:T){
+  r = (x == 0) * (runif(n) < 1 / (1 + (1 - pe[t-1]) / (pe[t-1]*exp(-lamb[t-1])))) + (x>0)
+  lamb[t] = rgamma(1, a + sum(x), b + sum(r)) 
+  pe[t] = rbeta(1, 1 + sum(r), n - sum(r) + 1)
+}
+
+```
+
+```{r}
+# plot 
+lambda_plot <- ggplot() + geom_histogram(aes(x = lamb, y = ..density..), color = "black", fill = "blue", alpha = 0.5) + geom_density(aes(y = ..density..)) + xlab(expression(lambda)) + ggtitle("Given data with lambda = 2")
+
+p_plot <- ggplot() + geom_histogram(aes(x = pe, y = ..density..), color = "black", fill = "green", alpha = 0.5) + geom_density(aes(y = ..density..)) + xlab("p") + 
+  ggtitle("Given data with p = 0.3")
+
+grid.arrange(lambda_plot, p_plot, ncol = 1)
+```
 
