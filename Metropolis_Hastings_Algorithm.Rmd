@@ -222,10 +222,10 @@ for (t in 2:T){
 
 ```{r}
 # plot 
-lambda_plot <- ggplot() + geom_histogram(aes(x = lamb, y = ..density..), color = "black", fill = "blue", alpha = 0.5) + geom_density(aes(y = ..density..)) + xlab(expression(lambda)) + ggtitle("Given data with lambda = 2")
+lambda_plot <- ggplot() + geom_histogram(aes(x = lamb, y = ..density..), color = "black", fill = "blue", alpha = 0.5) + geom_density(aes(y = ..density..)) + xlab(expression(lambda)) + ggtitle("Given data with lambda = 2") + xlim(c(1.8, 2.2))
 
 p_plot <- ggplot() + geom_histogram(aes(x = pe, y = ..density..), color = "black", fill = "green", alpha = 0.5) + geom_density(aes(y = ..density..)) + xlab("p") + 
-  ggtitle("Given data with p = 0.3")
+  ggtitle("Given data with p = 0.3") + xlim(c(0.29, 0.31))
 
 grid.arrange(lambda_plot, p_plot, ncol = 1)
 ```
