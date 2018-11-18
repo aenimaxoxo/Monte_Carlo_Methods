@@ -9,6 +9,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options(warn=-1)
 library(ggplot2)
 library(dplyr)
 ```
@@ -78,7 +79,7 @@ x <- tibble(x)
 x_n <- tibble(x_1, x_2)
 
 # plot 
-x_hist <- ggplot(x, aes(x)) + geom_histogram(fill = "green", color = "black", alpha = 0.2)
+x_hist <- ggplot(x, aes(x)) + geom_histogram(bins = 50, fill = "green", color = "black", alpha = 0.2)
 x_plot <- ggplot(x_n, aes(x_1, x_2)) + geom_point(color = "black", alpha = 0.7) + xlab("x1") + ylab("x2")
 x_acf <- ggacf(x)
 gridExtra::grid.arrange(x_hist, x_plot, x_acf, ncol = 3)
@@ -125,9 +126,9 @@ X <- tibble(X)
 Y <- tibble(Y)
 
 # plot
-unif_hist <- ggplot(X, aes(X)) + geom_histogram(fill = "green", color = "black", alpha = 0.2) + geom_freqpoly()
-exp_hist <- ggplot(Y, aes(Y)) + geom_histogram(fill = "green", color = "black", alpha = 0.2) + geom_freqpoly()
-gridExtra::grid.arrange(unif_hist, exp_hist, ncol = 2)
+unif_hist <- ggplot(X, aes(X)) + geom_histogram(bins = 50, fill = "green", color = "black", alpha = 0.2) + geom_freqpoly()
+exp_hist <- ggplot(Y, aes(Y)) + geom_histogram(bins = 50, fill = "green", color = "black", alpha = 0.2) + geom_freqpoly()
+gridExtra::grid.arrange(unif_hist, exp_hist, nrow = 2)
 ```
 
 The plot above compares the outpit from the probability inverse transform with the output from rexp. The fits of both histograms to their exponential limit are not distinguishable. 
@@ -167,5 +168,71 @@ X <- 2 * apply(X, 2, sum)
 ```
 
 ## 2.2.1 | A Normal Generator 
+
+One way to achieve normal random variable simulation using a transform is with the Box-Muller algorithm, devised for the generation of $N(0, 1)$ variables. 
+
+### Example 2.3
+
+If $U_1$ and $U_2$ are iid $\mathcal{U}(0, 1)$, the variables $X_1, X_2$ are defined  by 
+
+\begin{center}
+  $X_1 = \sqrt{-2\log(U_1)}\cos(2 \pi U_2)$,   $X_2 = \sqrt{-2\log(U_1)}\sin(2 \pi U_2)$
+\end{center}
+
+are then iid $\mathcal{N}(0, 1)$ by virtue of a change of variable argument. 
+
+```{r}
+# exercise 2.3, show that E[Z] = 0 and var(Z) = 1
+
+# generate 12 unif rvs 
+U <- runif(n = 12, min = -0.5, max = 0.5)
+
+# set z = sum U_i
+Z <- sum(U)
+
+# expected value 
+eU <- U * (1/12)
+eU <- sum(eU)
+
+# or E[U_i] = (1/2 + (- 1/2)) / 2 = 0, therefore E[Z] = 0 * (1/12 * 12) = 0. Similarly, var(U_i) = (1/12)(b - a)^2 = 1/12. Then Var(Z) = sum(var(U)) = 1
+```
+
+We see that the numerical value is less than the variance of 1/12. 
+
+```{r}
+# using histograms, compare this CLT normal generator with the Box-Muller algorithm. Pay particular attention to tail probabilities
+
+nsim = 10^4 
+U_1 <- runif(nsim)
+U_2 <- runif(nsim)
+
+# transformed unif to norm
+X_1 <- sqrt(-2 * log(U_1)) * cos(2 * pi * U_2)
+X_2 <- sqrt(-2 * log(U_1)) * sin(2 * pi * U_2)
+
+# rnorm for comparison 
+reg_norm <- rnorm(n = 10^4, 0, 1)
+
+# placeholder array
+U <- array(0, dim = c(nsim))
+
+# fill array with simulated unifs
+for (i in 1:nsim){
+  U[i] <- sum(runif(12, -0.5, 0.5))
+}
+
+# coerce to dataframe 
+X_1 <- tibble(X_1)
+X_2 <- tibble(X_2)
+U <- tibble(U)
+reg_norm <- tibble(reg_norm)
+
+# plot 
+x1_hist <- ggplot(X_1, aes(X_1)) + geom_histogram(bins = 50, fill = "green", color = "black",  alpha = 0.2) + scale_x_continuous(limits=c(-4, 4))
+x2_hist <- ggplot(X_2, aes(X_2)) + geom_histogram(bins = 50, fill = "green", color = "black",  alpha = 0.2) + scale_x_continuous(limits=c(-4, 4))
+u_hist <- ggplot(U, aes(U)) + geom_histogram(bins = 50, fill = "green", color = "black",  alpha = 0.2) + scale_x_continuous(limits=c(-4, 4))
+reg_norm_hist <- ggplot(reg_norm, aes(reg_norm)) + geom_histogram(bins = 50, fill = "green", color = "black",  alpha = 0.2) + scale_x_continuous(limits=c(-4, 4)) + xlab("rnorm")
+gridExtra::grid.arrange(x1_hist, x2_hist, u_hist, reg_norm_hist, nrow = 4)
+```
 
 
