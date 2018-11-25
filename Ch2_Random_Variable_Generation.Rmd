@@ -235,4 +235,317 @@ reg_norm_hist <- ggplot(reg_norm, aes(reg_norm)) + geom_histogram(bins = 50, fil
 gridExtra::grid.arrange(x1_hist, x2_hist, u_hist, reg_norm_hist, nrow = 4)
 ```
 
+The simulation of a multivariate normal distribution $\mathcal{N}_p (\mu, \Sigma)$, where $\Sigma$ is a $p \times p$ symmetric and positive-definite matrix, can be derived from the generic rnorm generator in that using a Cholesky decomposition of $\Sigma$ ($\Sigma = AA^T$) and taking the transform by $A$ of an iid normal vector of dimension $p$ leads t a $\mathcal{N}_p(0, \Sigma)$ normal vector. 
+
+There is an R package that replicates these steps called rmnorm available from the mnormt library that allows the computation of the probability of hypercubes via the function sadmvn 
+
+```{r}
+# make a positive definite matrix for our multivariate norm. This is the identity matrix
+identity_matrix <- diag(3)
+
+# generative mvnorm density
+mnormt::sadmvn(low = c(1, 2, 3), upper = c(10, 11, 12), mean = rep(0, 3), var = identity_matrix)
+```
+
+## 2.2.2 | Discrete Distributions 
+
+To generate $X \sim P_{\theta}$, where $P_{\theta}$ is supported by the integers, we can calculate the probabilities: 
+
+\begin{center}
+  $p_0 = P_{\theta}(X \leq 0), p_1 = P_{\theta}(X \leq 1), ...$
+\end{center}
+
+and then generate $U \sim \mathcal{U}(0, 1)$ and take $X = k$ if $p_{k-1} < U < p_k$
+
+### Example 2.4 
+
+To generate $X \sim \mathcal{Bin}(10, 0.3)$, the probability values are obtained by pbinom(k, 10, 0.3) 
+
+```{r}
+
+# make vector to store values 
+binoms <- c()
+
+# calculate binomial probabilities
+for (i in 0:10){
+  binoms <- append(binoms, pbinom(i, 10, 0.3))  
+}
+
+# make into table
+binoms <- tibble("probability" = binoms)
+
+# add row number, reorder rows
+binoms <- binoms %>% mutate("index" = row_number()) %>% select("index", "probability") 
+
+
+ggplot(binoms,aes(x = binoms$index)) + geom_step(aes(x = binoms$index, y = binoms$probability), color = "green", stat="ecdf") + xlab("Index") + ylab("Probability") 
+
+binoms
+```
+
+If we wished to generate random variables from a Poisson distribution with mean $\lambda = 100$, the above algorithm would be inefficient. We expect most of our observations to be in the interval $\lambda = \pm 3\sqrt\lambda$ ($\lambda$ is the variance and mean for the Poisson). For $\lambda = 100$, this interval is $(70, 130)$. Therefore, if we start at 0, we will almost always produce 70 tests of whether or not $p_{k-1} < U < p_k$ that are useless because they are almost certain to be rejected.
+
+A remedy is to ignore what is outside of a highly likely interval such as $(70, 130)$, as $P(X < 70) + P(X > 130) = 0.00268$. 
+
+```{r}
+# generate Poisson RVs for large values of lambda
+
+numsims <- 10^4 
+lambda <- 100 
+spread <- 3 * sqrt(lambda) 
+
+# generate a sequence of integer values in the range around the mean 
+lambda_sequence <- round(seq(max(0, lambda - spread), lambda + spread, 1))
+
+# generate probabilities of getting lambda_sequence values 
+probs <- ppois(lambda_sequence, lambda)
+
+# check to see what interval the uniform RV fell in and assign the corrent Poisson value to X 
+rvs <- rep(0, numsims)
+
+# notice how it only assigns values to the earliest RVs
+for (i in 1:numsims){
+  u <- runif(1)
+  rvs[i] <- lambda_sequence[i] + sum(probs < u)
+}
+
+# plot 
+probs <- probs %>% tibble("probability" = probs) 
+probs <- probs %>% mutate("index" = row_number()) %>% select("index", "probability")
+ggplot(probs, aes(x = probs$index)) + geom_step(aes(x = probs$index, y = probs$probability), color = "green", stat="ecdf") + xlab("Index") + ylab("Probability") 
+```
+
+A more formal remedy to the inefficiency of starting the cumulative probabilities at $p_0$ is to start instead from the mode of the discrete distribution $P_{\theta}$ and to explore the neighboring values until the cumulative probability is 1 up to an approximation error. The $p_k$'s are then indexed by the visited values rather than by the integers, but the validity of the method remains complete. 
+
+## 2.2.3 | Mixture Representations 
+
+Sometimes a probability distribution can be represented as a _mixture distribution_, that is, of the form: 
+
+\begin{center}
+  $f(x) = \int_{\mathcal{\gamma}} g(x|y)p(y)dy$ or $f(x) = \sum\limits_{i \in \mathcal{\gamma}} p_i f_i(x)$
+\end{center}
+
+depending on whether the auxillary space $\mathcal{\gamma}$ is continuous or discrete, and $g$ and $p$ are standard distributions that are easily simulated.
+
+To generate a RV $X$ using such a representation, we can first generate a variable $Y$ from the mixing distribution and then generate $X$ from the selected conditional distribution. For example: 
+
+\begin{center}
+if $y \sim p(y)$ and $X \sim f(x|y)$, then $X \sim f(x)$ (if continuous)
+if $\gamma \sim P(\gamma = i) = p_i$ and $X \sim f_{\gamma}(x)$, then $X \sim f(x)$ (if discrete)
+\end{center}
+
+For instance, we can write the Student's t density with $v$ degrees of freedom $T_v$ as a mixture where : 
+
+\begin{center}
+  $X | y \sim \mathcal{N}(0, \frac{v}{y})$ and $Y \sim \chi_v^2$
+\end{center}
+
+Generating from a $T_v$ distribution could then amount to generating from a $\chi_v^2$ distribution, and then from the corresponding normal distribution.
+
+### Example 2.6
+
+If $X$ is a negative binomial random variable, $X \sim \mathcal{Neg}(n, p)$, then $X$ has a mixture representation
+
+\begin{center}
+  $X | y \sim P(y)$ and $Y \sim \mathcal{G}(n, \beta)$$
+\end{center}
+
+where $\beta = \frac{1-p}{p}$. 
+
+```{r}
+# generate student t with v dof mixture
+
+# parameter assignment 
+numsims <- 10^4 
+n <- 6
+p <- 0.3 
+
+# generate RVs 
+y <- rgamma(numsims, n, rate = p / (1-p))
+x <- rpois(numsims, y) 
+
+# generate negative binom for comparison 
+negbin <- dnbinom(1:50, n, p)
+
+# place in tibble
+x <- tibble("sample" = x)
+x <- x  %>% mutate("index" = row_number()) %>% select("index", "sample")
+
+negbin <- tibble("probability" = negbin)
+negbin <- negbin %>% mutate("index" = row_number()) %>% select("index", "probability")
+
+# plot 
+ggplot(x, aes(x = x$sample)) + geom_density(fill = "green", color = "gray",  alpha = 0.2) + geom_line(data = negbin, aes(x = 1:50, y = negbin$probability)) + ylab("Density") + xlab("Sample") + 
+  ggtitle("10000 Negative Binomial RVs Generated from the Mixture Representation", subtitle = "Black Line Generated by R, Density by Transformation") 
+  
+```
+
+# 2.3 | Accept-Reject Methods 
+
+There are many distributions for which the inverse transform method and even general transformations will fail to be able to generate the required random variables. For these cases, we turn to indirect methods. 
+
+These indirect methods are called **Accept-Reject Methods** and they only require us to know the functional form of the density $f$ of interest (called the target density) up to a multiplicative constant. We will use a simpler to simulate density $g$, called the _instrumental_ or _candidate_ density to generate the random variable for which the simulation is actually done. 
+
+We impose the following constaints on $g$: 
+
+$f$ and $g$ have compatible supports (i.e. g(x) > 0 when f(x) > 0) 
+
+There is a constant $M$ with $\frac{f(x)}{g(x)} \leq M$ for all $x$ 
+
+In this case, $X$ can be simulated as follows: 
+
+\begin{center}
+  Generate $Y \sim g$, $U \sim \mathcal{U}(0, 1)$
+  Accept $X = Y$ if $U \leq \frac{1}{M} \frac{f(Y)}{g(Y)}$
+  Return to 1 otherwise
+\end{center}
+
+Here is a generalized implementation, in which randg() is a function that delivers generations from the density $g$. 
+
+```{r}
+# u <- runif(1) * M
+# y <- randg(1)
+
+# while(u > f(y)/g(y)){
+#   u <- runif(1) * m
+#   y <- randg(1)
+# }
+```
+
+Which produces a single generation $y$ from $f$
+
+### Example 2.7 
+
+Suppose we wish to simulate $\mathcal{Beta}(\alpha, \beta)$ random variables where the instrumental distribution is the $\mathcal{U}(0, 1)$ distribution and $\alpha$, $\beta$ are both larger than 1 (the rbeta function does not impose this restriction). 
+
+The upper bound $M$ is then the maximum of the beta density
+
+```{r}
+# find max of beta
+M_const <- optimize(f = function(x){dbeta(x, 2.7, 6.3)}, interval = c(0, 1), maximum = TRUE)
+objective_M <- M_const$objective
+```
+
+Since the candidate density $g$ is equal to 1, the proposed value $Y$ is accepted if $M \times U$ is under the beta density $f$ at that realization. 
+
+Note that generating $U \sim \mathcal{U}(0, 1)$ and multiplying it by $M$ is equivalent to generating $U \sim \mathcal{U}(0, M)$. 
+
+For $\alpha = 2.7$, $\beta = 6.3$, an alternative R implementation of the Accept-Reject algorithm is 
+
+```{r}
+# declare parameters
+numsims <- 10^5 
+a <- 2.7
+b <- 6.3 
+
+# generate distributions
+
+# uniform over (0, M)
+u <- runif(numsims, max = objective_M)
+
+# generation from g
+y <- runif(numsims)
+
+# accepted subsample
+x <- y[u < dbeta(y, a, b)]
+
+# percentage accepted
+length(x) / 10^5
+```
+In the implementation above, our numsims is fixed. This makes our accepted values $\sim \mathrm{Bin}(n, \frac{1}{M})$. Instead of this, in most cases the number of accepted values is fixed. This can be exploited as in 
+
+```{r}
+x <- NULL 
+
+while (length(x) < numsims){
+  y <- runif(numsims * objective_M)
+  x <- c(c, y[runif(numsims * objective_M) * objective_M < dbeta(y, a, b)])
+}
+
+x <- x[1:numsims]
+```
+
+Some key properties of the Accept-Reject algorithm which should always be considered when using it are the following:
+
+** Only the ratio $\frac{f}{M}$ is needed, so the algorithm does not depend on the normalizing constant 
+** The bound $f \leq Mg$ need not be tight; the algorithm remains valid (if less efficient) when $M$ is replaced with any larger constant 
+** The probability of acceptance is $\frac{1}{M}$, so $M$ should be as small as possible for a given computational effort. 
+
+# 2.4 | Additional Exercises 
+
+## 2.11 
+
+In both questions, the comparison between generators is understood in terms of efficiency via the system.time function.
+
+**A** Generate a binomial $\mathcal{Bin}(n, p)$ random variable with $n = 25$, $p = 0.2$. Plot a histogram for your simulated sample and compare it with the binomial mass function. Compare your generator with the R binomial generator. 
+
+```{r}
+# declare parameters 
+numsims <- 10^5 
+n <- 25
+p <- 0.2
+
+# binomial RV
+binoms <- pbinom(c(0:n), n, p)
+
+# placeholder array
+genned_x <- array(0, numsims)
+
+# generate cdf 
+for (i in 1:numsims){
+  u <- runif(1)
+  genned_x[i] <- sum(binoms < u)
+}
+
+genned_x <- tibble("sample" = genned_x) %>% mutate("index" = row_number()) %>% select("index", "sample")
+
+comparison_binom <- dbinom(1:n, n, p)
+comparison_binom <- tibble("probability" = comparison_binom) %>% mutate("index" = row_number()) %>% select("index", "probability")
+
+ggplot(genned_x, aes(x = genned_x$sample)) + geom_histogram(bins = 25, fill = "green", color = "black",  alpha = 0.2) + geom_line(data = comparison_binom, aes(x = 1:n, y = comparison_binom$probability * 100000)) + xlim(-3, 20) + xlab("Samples") + ylab("Count")
+
+```
+
+## 2.15 
+
+The Poisson Distribtion $P(\lambda)$ is connected to the exponential distribution through the Poisson process in that it can be simulated by generating exponential random variables until their sum exceeds 1. That is, if $X_i \sim \mathcal{Exp}(\lambda)$ and if $K$ is the first value for which $\sum\limits_{i=1}^{K+1} X_i > 1$, then $K \sim P(\theta)$. Compare this algorithm with rpois and the algorithm of example 2.5 for both small and large values of $\lambda$
+
+```{r}
+# poisson 1 through transformations 
+pois_1 <- function(numsims, lambda){
+  spread <- 3 * sqrt(lambda)
+  lambda_samples <- round(seq(max(0, lambda - spread), lambda + spread, 1))
+  pois_probs <- ppois(lambda_samples, lambda)
+  approx <- rep(0, numsims)
+  for (i in 1:numsims){
+    u <- runif(1)
+    approx[i] = max(lambda_samples[1], 0) + sum(pois_probs < u) - 1
+  }
+  return(approx)
+}
+
+# poisson 2 through exponential generators 
+pois_2 <- function(numsims, lambda){
+  approx <- rep(0, numsims)
+  for (i in 1:numsims){
+    sum <- 0
+    k <- 1
+    sum <- sum + rexp(1, lambda)
+    while (sum < 1){
+      sum <- sum + rexp(1, lambda)
+      k <- k + 1
+    }
+    approx[i] <- k
+  }
+  return(approx)
+}
+
+# test functions against each other 
+numsims <- 10^4
+lambda <- 10
+
+system.time(pois_1(numsims, lambda))
+system.time(pois_2(numsims, lambda))
+system.time(rpois(numsims, lambda))
+```
 
