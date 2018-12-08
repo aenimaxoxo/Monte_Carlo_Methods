@@ -8,7 +8,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, tidy.opts = list(width.cutoff = 70), tidy = TRUE)
 library(magrittr)
 library(dplyr)
 library(ggplot2)
@@ -221,3 +221,142 @@ by the Monte Carlo method is
 with exact variance $\frac{\Phi(t)[1 - \Phi(t)]}{n}$, since the variables $\mathbb{I}_{x_i \leq t}$ are independent Bernoulli random variables with success probability $\Phi(t)$. 
 
 # 3.3 | Importance Sampling 
+
+We will now look at importance sampling, which relies on _importance functions_, which are instrumental distributions in lieu of the original distributions. In fact, an evaluation of 
+
+\begin{center}
+  $\mathbb{E}_f [h(X)] = \int_\chi h(x) f(x) dx$
+\end{center}
+
+based on simulations from $f$ is almost never optimal in the sense that using alternative distributions can improve the variance of the resulting estimator. 
+
+## 3.3.1 | An arbitrary change of reference measure 
+
+Given an arbitrary density $g$ that is strictly positive when $h \times f$ is different from zero, we can rewrite 
+
+\begin{center}
+  $\mathbb{E}_f [h(X)] = \int_\chi h(x) \frac{f(x)}{g(x)} g(x) dx = \mathbb{E}_g [\frac{h(X) f(X)}{g(X)}]$
+\end{center}
+
+that is, as an expectation under the density $g$. This _importance sampling fundamental identity_ justifies the use of the estimator 
+
+\begin{center}
+  $\frac{1}{n} \sum\limits_{j = 1}^n \frac{f(X_j)}{g(X_j)} h(X_j) \to \mathbb{E}_f [h(X)]$
+\end{center}
+
+based on a sample $X_1, ..., X_n$ generated from $g$, not $f$. Since $\mathbb{E}_f [h(X)]$ can be written as the expectation under g, $\mathbb{E}_g [h(X)]$, our estimator does converge to $\mathbb{E}_f [h(X)]$ for the same reason the regular Monte Carlo estimator $\bar{h_n}$ converges whatever the choice of the distribution $g$ (as long as $\sup g \supset \sup p(h \times f)$). 
+
+This property relates to the fact that $\mathbb{E}_f [h(X)]$ can be represented in an infinite number of ways by pairs $(h, f)$ and thus a given integral is not intrinsically associated with a given distribution. There is almost absolute freedom in its representation as an expectation. 
+
+The constraint on the support of $g$, $\sup g \supset \sup p(h \times f)$ is absolute in that using a smaller support truncates the integral over $g$ and, as a result, produces a biased result. This means that when considering nonparametric solutions for $g$, the support of the kernel must be unrestricted. 
+
+## Example 3.5
+
+Mentioned previously, approximating tail probabilities using Monte Carlo sums breaks down once we go far enough into the tails. 
+
+Suppose we are interested in the probability of a very rare event. Then naive simulation from $f$ will require a huge number of simulations to get a stable answer. Thanks to importance sampling, we can greatly improve our accuracy and bring down the number of simulations by several orders of magnitude. 
+
+Consider a distribution with a restricted support on $(4.5, \infty)$. A natural choice is to take $g$ as the density of the exponential distribution $\mathcal{Exp}(1)$ truncated at 4.5, 
+
+\begin{center}
+  $g(y) = \frac{e^{-y}}{\int_{4.5}^{\infty} e^{-x} dx} = e^{-(y - 4.5)}$
+\end{center}
+
+and the corresponding importance sampling estimator of the tail probability is 
+
+\begin{center}
+  $\frac{1}{n} \sum\limits_{i=1}^n \frac{f(Y^{(i)})}{g(Y^{(i)})} = \frac{1}{n} \sum\limits_{i=1}^n \frac{e^{-Y_i^2 / 2 + Y_i - 4.5}}{\sqrt{2\pi}}$
+\end{center}
+
+where the $Y_i$'s are iid generations from $g$. 
+
+```{r}
+# parameters 
+numsims <- 10^4
+
+# g
+exp_dists <- rexp(numsims) + 4.5
+
+# ratio 
+norm_exp_ratio <- dnorm(exp_dists) / dexp(exp_dists - 4.5)
+
+# importance sampling estimator
+imp_samp_est <- cumsum(norm_exp_ratio) / 1:numsims
+
+# place in tibble 
+norm_exp <- tibble("Importance_Sampling_Estimator" = imp_samp_est, "Normal_Exponential_Ratio" = norm_exp_ratio) %>% mutate("Index" = row_number()) %>% select("Index", "Importance_Sampling_Estimator", "Normal_Exponential_Ratio")
+
+# plot 
+ggplot(norm_exp, aes(x = norm_exp$Index, y = norm_exp$Importance_Sampling_Estimator)) + geom_line() +
+  xlab("Number of Simulations") + ylab("Estimated Probability (-4.5 Z-Score)") + ylim(c(3e-06, 4.5e-06)) + 
+  geom_hline(yintercept = pnorm(-4.5), alpha = 0.3)
+```
+
+
+## Example 3.6 
+
+When considering an observation $x \sim \mathcal{B}(\alpha, \beta)$
+
+\begin{center}
+  $x \sim \frac{\Gamma(\alpha + \beta)}{\Gamma(\alpha) \Gamma(\beta)} x^{\alpha - 1} (1 - x)^{\beta - 1} \mathbb{I}_{[0, 1]}(x)$
+\end{center}
+
+there exists a family of conjugate priors on $(\alpha, \beta)$ of the form 
+
+\begin{center}
+  $\pi(\alpha, \beta) \propto \{ \frac{\Gamma(\alpha + \beta)}{\Gamma(\alpha) \Gamma(\beta)} \}^{\lambda} x_0^{\alpha} y_0^{\beta}$
+\end{center}
+
+where $\lambda, x_0, y_0$ are hyperparameters. Then the posterior is equal to 
+
+\begin{center}
+  $\pi(\alpha, \beta | x) \propto \{ \frac{\Gamma(\alpha + \beta)}{\Gamma(\alpha) \Gamma(\beta)} \}^{\lambda + 1} [xx_0]^{\alpha} [(1 - x)y_0]^{\beta}$
+\end{center}
+
+This family of distributions is intractable if only because of the difficulty of dealing with gamma functions. Simulating directly from $\pi(\alpha, \beta | x)$ is impossible. 
+We must use a substitute distribution $g(\alpha, \beta)$. We can get an idea of what may fit by getting a preliminary look at an image representation of $\pi(\alpha, \beta | x)$. 
+
+Let $\lambda = 1, x_0 = y_0 = 0.5, x = 0.6$
+
+```{r}
+# define beta gamma conjugate function
+beta_gamma <- function(a, b){
+  exp(2 * (lgamma(a + b) - lgamma(a) - lgamma(b)) + a * log(0.3) + b * log(0.2))
+}
+
+# parameters for grid
+alpha_a <- 1:250
+beta_b <- 1:250
+
+# outer creates  a matrix of dimension dim(a), dim(b) whose A[i, j] element is f(a[i], b[j])
+points <- outer(alpha_a, beta_b, beta_gamma)
+
+# melt takes wide-format data and melts it into long form data
+points <- reshape2::melt(points)
+
+# plot
+ggplot(points, aes(x = Var2, y = Var1)) + geom_raster(aes(fill = value)) + geom_contour(aes(z = value), colour = "white", alpha = 0.5)
+```
+
+The examination of the figure above shows that a normal or Student's t distribution on the pair $(\alpha, \beta)$ could be appropriate. 
+
+Choosing a Student's $\mathcal{T}(3, \mu, \Sigma)$ distribution with $\mu = (50, 45)$ and $\Sigma = \begin{pmatrix} 220 & 190 \\ 190 & 180 \end{pmatrix}$ produces a reasonable fit. The covariance matrix was chosen by trial and error (looking closely at the plot). 
+
+```{r}
+# create matrix of student t samples 
+student_t_samples <- matrix(rt(2*10^4, 3), ncol = 2)
+
+# scale matrix
+scale_sigma <- matrix(c(220, 190, 190, 210), ncol = 2)
+
+# generate student t points
+student_t_points <- t(t(chol(scale_sigma)) %*% t(student_t_samples) + c(50, 50))
+student_t_points <- student_t_points %>% as_tibble()
+
+# plot 
+ggplot(points, aes(x = Var2, y = Var1)) +
+  geom_raster(aes(fill = value)) + geom_contour(aes(z = value), colour = "white", alpha = 0.5) +
+  geom_point(data = student_t_points , aes(x = V1, y = V2)) + 
+  xlim(c(0, 250)) + ylim(c(0, 250))
+```
+
