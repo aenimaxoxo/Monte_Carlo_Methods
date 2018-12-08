@@ -12,6 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 library(dplyr)
 library(ggplot2)
+theme_set(new = theme_gray())
+options(warn=-1)
 ```
 
 # 3.1 | Introduction
@@ -118,3 +120,104 @@ ggplot() +
 We can see that using area() in this case produces a more reliable evaluation, since it flattens out as $a$ increases. 
 
 # 3.2 | Classical Monte Carlo Integration
+
+Suppose we wish to evaluate the integral 
+
+\begin{center}
+  $\mathbb{E}_f [h(X)] = \int_\chi h(x) f(x) dx$
+\end{center}
+
+where $\chi$ denotes the set where the random variable $X$ takes its values, which is usually equal to the support of the density $f$. 
+
+The principle of the Monte Carlo method is to generate a sample $(X_1, ..., X_n)$ from the density $f$ and propose as an approximation the empirical average 
+
+\begin{center}
+  $\bar{h_n} = \frac{1}{n} \sum\limits_{j=1}^n h(x_j)$
+\end{center}
+
+computed by mean(h(x)) in R, since $\bar{h_n}$ converges almost surely (i.e. for almost every generated sequence) to $\mathbb{E}_f [h(X)]$ by the Strong Law of Large Numbers. 
+
+When $h^2(X)$ has a finite expectation under $f$, the speed of convergence of $\bar{h_n}$ can be assessed since the convergence takes place at a rate of $O(\sqrt{n}$ and the asymptotic variance of the approximation is 
+
+\begin{center}
+  $\mathrm{var}(\bar{h_n}) = \frac{1}{n}\int_{\chi} (h(x) - \mathbb{E}_f [h(X)])^2 f(x) dx$
+\end{center}
+
+which can also be estimated from the sample $(X_1, ..., X_n)$ through 
+
+\begin{center}
+  $v_n = \frac{1}{n^2}\sum\limits_{j=1}^n [h(x_{j}) - \bar{h_n}]^2$
+\end{center}
+
+More specifically, due to the **Central Limit Theorem**, for large $n$, 
+
+\begin{center}
+  $\frac{\bar{h_n} - \mathbb{E}_f [h(X)]}{\sqrt{v_n}} \sim \mathcal{N}(0, 1)$
+\end{center}
+
+which leads to the construction of a convergence test and confidence bounds on the approximation of $\mathbb{E}_f [h(X)]$.
+
+## Example 3.3 
+
+Given $h(x) = [\cos(50x) + \sin(20x)]^2$, consider evaluating its integral over $[0, 1]$. It can be seen as a uniform expectation, so we can generate $U_1, U_2, ..., U_n$ iid $\mathcal{U}(0, 1)$ random variables and approximate $\int h(x) dx$ with $\sum \frac{h(U_i)}{n}$. 
+
+```{r}
+# define function 
+sin_cos_fn <- function(x){
+  return((cos(50 * x) + sin(20 * x))^2)
+}
+
+# get integrate() area 
+integrate(sin_cos_fn, 0, 1)
+
+# plot function
+ggplot(tibble(x = c(0, 0.2, 0.4, 0.6, 0.8, 1.0)), aes(x)) + stat_function(fun = sin_cos_fn)
+```
+
+Now with Monte Carlo Integration
+
+
+```{r}
+# run 10^4 uniform samples through our function 
+unif_rvs <- sin_cos_fn(runif(10^4))
+
+# get estimate of integral area 
+estimated_integral <- cumsum(unif_rvs) / (1:10^4)
+
+# get estimate of error 
+estimation_error <- sqrt(cumsum((unif_rvs - estimated_integral)^2)) / (1:10^4)
+
+# add to tibble
+estimated <- tibble("Integral" = estimated_integral, "Error" = estimation_error) %>% mutate("Index" = row_number()) %>% select("Index", "Integral", "Error")
+
+# value of integral 
+max(estimated_integral[9750:10^4])
+
+# plot
+ggplot(estimated, aes(x = estimated$Index, y = estimated$Integral)) + geom_line() +
+  xlab("Mean and Error Range") + ylab("Estimated Integral Value") +
+  ylim(mean(unif_rvs) + 20 * c(-estimated$Error[10^4], estimated$Error[10^4])) +
+  geom_line(aes(y = estimated$Integral + 2 * estimated$Error), color = "green") + 
+  geom_line(aes(y = estimated$Integral - 2 * estimated$Error), color = "green") + 
+  geom_hline(yintercept = 0.9652009, alpha = 0.3)
+```
+
+While the bonus brought by the simultaneous evaluation of the error of the monte carlo estimate can not be disputed, we must be aware that it is only trustworthy as far as $v_n$ is a proper estimate of the variance of $\bar{h_n}$. In critical situations where $v_n$ does not converge at all or does not even converge fast enough for a CLT to apply, this estimate and the confidence region associated with it can not be trusted. 
+
+## Example 3.4
+
+Given a normal $\mathcal{N}(0, 1)$ sample of size $n, (x_1, ..., x_n)$, the approximation of 
+
+\begin{center}
+  $\Phi(t) = \int_{- \infty}^t \frac{1}{\sqrt{2\pi}} e^{- \frac{y^2}{2}} dy$
+\end{center}
+
+by the Monte Carlo method is 
+
+\begin{center}
+  $\hat{\Phi}(t) = \frac{1}{n} \sum\limits_{i = 1}^n \mathbb{I}_{x_i \leq t}$
+\end{center}
+
+with exact variance $\frac{\Phi(t)[1 - \Phi(t)]}{n}$, since the variables $\mathbb{I}_{x_i \leq t}$ are independent Bernoulli random variables with success probability $\Phi(t)$. 
+
+# 3.3 | Importance Sampling 
