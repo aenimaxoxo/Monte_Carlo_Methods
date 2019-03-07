@@ -22,7 +22,7 @@ set.seed(8888)
 ```{r}
 # define squared exponential kernel
 squared_exp <- function(val1, val2, i, j, length_scale = 1, variance_out = 2){
-  return(variance_out * exp(- 0.5 * (abs(val1[i] - val2[j]) / length_scale)^2))
+  return(variance_out * exp(-0.5 * (abs(val1[i] - val2[j]) / length_scale)^2))
 }
 
 # define relational quadratic kernel
@@ -31,12 +31,12 @@ rational_quadratic <- function(val1, val2, i, j, length_scale = 1, variance_out 
 }
 
 # define periodic kernel
-periodic <- function(val1, val2, i, j, length_scale = 1, variance_out = 2, period = (pi / 2)){
+periodic <- function(val1, val2, i, j, length_scale = 1, variance_out = 2, period = (pi / 1.618)){
   return(variance_out * exp((-1) * (2 * sin(pi * (val1[i] - val2[j]) / period)^2) / length_scale^2))
 }
 
 # define locally periodic kernel
-locally_periodic <- function(val1, val2, i, j, length_scale = 1, variance_out = 2, period = (pi / 2)){
+locally_periodic <- function(val1, val2, i, j, length_scale = 1, variance_out = 2, period = (pi / 1.618)){
   return(variance_out * exp((-1) * (2 * sin(pi * (val1[i] - val2[j]) / period)^2) / length_scale^2) * exp((-1) * ((val1[i] - val2[j])^2) / 2 * length_scale ^ 2))
 }
 
@@ -46,7 +46,7 @@ linear <- function(val1, val2, i, j, variance_out = 2, constant_variance_out = 1
  }
  
 # define cos kernel
-cos_kern <- function(val1, val2, i, j, period = (pi / 2)){
+cos_kern <- function(val1, val2, i, j, period = (pi / 1.618)){
  return(cos((2 * pi * (val1[i] - val2[j]) / period)))
 }
 
@@ -85,7 +85,7 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
                     ncol = cols, nrow = ceiling(numPlots/cols))
   }
 
- if (numPlots==1) {
+ if (numPlots == 1) {
     print(plots[[1]])
 
   } else {
@@ -110,8 +110,9 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 # calculate covariance matrix function
 calc_sigma <- function(x1, x2, kernel){
   sigma <- matrix(rep(0, length(x1) * length(x2)), nrow = length(x1))
-  for (i in 1:nrow(sigma)){
-    for (j in 1:ncol(sigma)){
+  
+  for (i in 1:nrow(sigma)) {
+    for (j in 1:ncol(sigma)) {
       sigma[i, j] <- kernel(x1, x2, i, j)
     }
   }
@@ -139,26 +140,26 @@ num_samples <- 6
 values <- list()
 
 # prefill matrices
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] <- matrix(rep(0, length(x_star) * num_samples), ncol = num_samples)
 }
 
 # fill matrix. Each column is a sample from a multivariate normal dist with mean = 0 and cov = sigma
-for (i in 1:6){
-  for (j in 1:num_samples){
+for (i in 1:6) {
+  for (j in 1:num_samples) {
     values[[i]][, j] <- MASS::mvrnorm(1, rep(0, length(x_star)), cov_matrices[[i]])
   }
 }
 
 # add kernel names
 values %<>% set_names(kernel_names)
-for (i in 1:6){
-  values[[i]] %<>% cbind("x" = x_star, "kernel_name" = kernel_names[i]) #%>% reshape2::melt(id = "x") %>% as_tibble()
+for (i in 1:6) {
+  values[[i]] %<>% cbind("x" = x_star, "kernel_name" = kernel_names[i])
 }
 
 v_names <- values$squared_exp %>% as_tibble() %>% select(starts_with("V")) %>% colnames()
 
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] %<>% as_tibble() %>% mutate_at(v_names, as.numeric) %>% reshape2::melt(id = "x", id.vars = c("x", "kernel_name")) %>% mutate(x = as.numeric(x))
 }
 
@@ -174,7 +175,7 @@ plot_no_data <- function(kernel_index){
   geom_line(aes(group = variable, color = variable), alpha = 0.5) + 
   xlab("x") + ylab("f(x)") +
   theme_bw() + theme(legend.position = "none", axis.text.x = element_text(angle = 90, hjust = 1)) + 
-  ggtitle(paste0("Gaussian Process with No Data | ", kernel_names[kernel_index]))
+  ggtitle("Gaussian Process with No Data", subtitle = kernel_names[kernel_index])
 }
 
 # map plots to vector
@@ -190,8 +191,8 @@ multiplot(no_data_plots[[1]], no_data_plots[[2]], no_data_plots[[3]], no_data_pl
 
 ```{r}
 # assume we have some known data points
-points <- tibble(x = c(-4, -3, -1, 0, 2),
-                 y = c(-2, 0, 1, 2, -1))
+points <- tibble(x = c(-4.1, -2.2, 0, 2.5, 4.1),
+                 y = c(-2, 2.88, -2.96, 2.22, -3.5))
 
 
 # calc cov matrices using x_stars above
@@ -218,26 +219,26 @@ num_samples <- 50
 values <- list()
 
 # prefill matrices
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] <- matrix(rep(0, length(x_star) * num_samples), ncol = num_samples)
 }
 
 # fill matrix. Each column is a sample from a multivariate normal dist with mean = 0 and cov = sigma
-for (i in 1:6){
-  for (j in 1:num_samples){
+for (i in 1:6) {
+  for (j in 1:num_samples) {
     values[[i]][, j] <- MASS::mvrnorm(1, points_mean[[i]], points_cov[[i]])
   }
 }
 
 # add kernel names
 values %<>% set_names(kernel_names[1:6])
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] %<>% cbind("x" = x_star, "kernel_name" = kernel_names[i]) #%>% reshape2::melt(id = "x") %>% as_tibble()
 }
 
 v_names <- values$squared_exp %>% as_tibble() %>% select(starts_with("V")) %>% colnames()
 
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] %<>% as_tibble() %>% mutate_at(v_names, as.numeric) %>% reshape2::melt(id = "x", id.vars = c("x", "kernel_name")) %>% mutate(x = as.numeric(x))
 }
 ```
@@ -254,7 +255,7 @@ plot_with_data <- function(kernel_index){
   theme_bw() + 
   xlab("x") + ylab("f(x)") + 
   theme(legend.position = "none") + 
-  ggtitle("Gaussian Process with Data", kernel_names[kernel_index])
+  ggtitle("Gaussian Process with Data", subtitle = kernel_names[kernel_index])
 }
 
 # map plots to vector
@@ -263,7 +264,7 @@ some_data_plots <- map(1:6, plot_with_data) %>% set_names(kernel_names[1:6])
 multiplot(some_data_plots[[1]], some_data_plots[[2]], some_data_plots[[3]], some_data_plots[[4]], some_data_plots[[5]], some_data_plots[[6]], cols = 2)
 ```
 
-# Observed Points with Noise 
+# Observed Points with Noise
 
 ```{r}
 # calculate noise sd 
@@ -277,26 +278,26 @@ points_cov <- map(1:6, ~ k_xsxs[[.x]] - (k_xsx[[.x]] %*% solve(k_xx[[.x]] + sigm
 values <- list()
 
 # prefill matrices
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] <- matrix(rep(0, length(x_star) * num_samples), ncol = num_samples)
 }
 
 # fill matrix. Each column is a sample from a multivariate normal dist with mean = 0 and cov = sigma
-for (i in 1:6){
-  for (j in 1:num_samples){
+for (i in 1:6) {
+  for (j in 1:num_samples) {
     values[[i]][, j] <- MASS::mvrnorm(1, points_mean[[i]], points_cov[[i]])
   }
 }
 
 # add kernel names
 values %<>% set_names(kernel_names[1:6])
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] %<>% cbind("x" = x_star, "kernel_name" = kernel_names[i])
 }
 
 v_names <- values$squared_exp %>% as_tibble() %>% select(starts_with("V")) %>% colnames()
 
-for (i in 1:6){
+for (i in 1:6) {
   values[[i]] %<>% as_tibble() %>% mutate_at(v_names, as.numeric) %>% reshape2::melt(id = "x", id.vars = c("x", "kernel_name")) %>% mutate(x = as.numeric(x))
 }
 ```
@@ -310,7 +311,7 @@ plot_with_data <- function(kernel_index){
   theme_bw() + 
   xlab("x") + ylab("f(x)") + 
   theme(legend.position = "none") + 
-  ggtitle("Gaussian Process with Data & Noise", kernel_names[kernel_index])
+  ggtitle("Gaussian Process with Data & Noise", subtitle = kernel_names[kernel_index])
 }
 some_data_plots <- map(1:6, plot_with_data) %>% set_names(kernel_names)
 
